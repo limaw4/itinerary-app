@@ -1,180 +1,155 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// app/explore.tsx
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList, Pressable, ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { AREAS, FEATURES } from '../libs/features';
+import { supabase } from '../libs/supabase';
 
-import { ExternalLink } from '@/components/external-link';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+type Place = {
+  id: string;
+  name: string;
+  area: string | null;
+  category: string;
+  price_min: number | null;
+  price_max: number | null;
+  rating: number | null;
+  indoor: boolean;
+};
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
-  const theme = useTheme();
+const BUDGETS = [
+  { label: 'Any', value: null },
+  { label: 'Under ₱1,000', value: 1000 },
+  { label: 'Under ₱2,000', value: 2000 },
+  { label: 'Under ₱3,000', value: 3000 },
+];
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
+export default function ExploreScreen() {
+  const [area, setArea] = useState<string | null>(null);
+  const [budget, setBudget] = useState<number | null>(null);
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      let query = supabase
+        .from('places')
+        .select('id, name, area, category, price_min, price_max, rating, indoor')
+        .eq('city', 'Metro Manila')
+        .order('rating', { ascending: false });
+
+      if (area) query = query.eq('area', area);
+      if (budget) query = query.lte('price_min', budget);
+
+      const { data, error } = await query;
+      if (cancelled) return;
+      if (error) console.error(error.message);
+      else setPlaces(data ?? []);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [area, budget]);
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <View style={s.screen}>
+      <Text style={s.title}>Find your kind of date</Text>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
+      {/* Single place / Day itinerary toggle */}
+      <View style={s.tabs}>
+        <View style={[s.tab, s.tabActive]}>
+          <Text style={s.tabActiveText}>Single place</Text>
+        </View>
+        <View style={[s.tab, !FEATURES.dayItinerary && s.tabDisabled]}>
+          <Text style={s.tabText}>Day itinerary</Text>
+          {!FEATURES.dayItinerary && <Text style={s.soon}>Soon</Text>}
+        </View>
+      </View>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+      {/* Area chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.chipRow}>
+        <Chip label="All areas" active={area === null} onPress={() => setArea(null)} />
+        {AREAS.map((a) => (
+          <Chip key={a} label={a} active={area === a} onPress={() => setArea(a)} />
+        ))}
+      </ScrollView>
 
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+      {/* Budget chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.chipRow}>
+        {BUDGETS.map((b) => (
+          <Chip key={b.label} label={b.label} active={budget === b.value}
+            onPress={() => setBudget(b.value)} />
+        ))}
+      </ScrollView>
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={places}
+          keyExtractor={(p) => p.id}
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+          ListEmptyComponent={
+            <Text style={s.empty}>No places match yet. Try another area or budget.</Text>
+          }
+          renderItem={({ item }) => (
+            <View style={s.card}>
+              <Text style={s.cardMeta}>
+                {item.category.toUpperCase()} · {item.area ?? 'Metro Manila'}
+              </Text>
+              <Text style={s.cardTitle}>{item.name}</Text>
+              <Text style={s.cardPrice}>
+                ₱{item.price_min ?? 0}–₱{item.price_max ?? 0} for two
+                {item.rating ? `  ·  ★ ${item.rating}` : ''}
+              </Text>
+              <Text style={s.cardTag}>{item.indoor ? 'Indoor' : 'Outdoor'}</Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
-  },
+function Chip({ label, active, onPress }: {
+  label: string; active: boolean; onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={[s.chip, active && s.chipActive]}>
+      <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const GREEN = '#2F4A3A';
+const CREAM = '#F6F1E7';
+
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: CREAM, paddingTop: 60 },
+  title: { fontSize: 28, fontFamily: 'serif', color: GREEN, paddingHorizontal: 16 },
+  tabs: { flexDirection: 'row', margin: 16, backgroundColor: '#EAE3D3', borderRadius: 999, padding: 4 },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 999, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  tabActive: { backgroundColor: '#fff' },
+  tabDisabled: { opacity: 0.5 },
+  tabActiveText: { color: GREEN, fontWeight: '600' },
+  tabText: { color: GREEN },
+  soon: { fontSize: 10, color: '#fff', backgroundColor: GREEN, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
+  chipRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#CFC7B3', backgroundColor: '#fff' },
+  chipActive: { backgroundColor: GREEN, borderColor: GREEN },
+  chipText: { color: GREEN },
+  chipTextActive: { color: '#fff' },
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, gap: 4 },
+  cardMeta: { fontSize: 11, letterSpacing: 1, color: '#8A8472' },
+  cardTitle: { fontSize: 20, fontFamily: 'serif', color: GREEN },
+  cardPrice: { color: '#4A4A4A' },
+  cardTag: { color: '#8A8472', fontSize: 12 },
+  empty: { textAlign: 'center', marginTop: 40, color: '#8A8472' },
 });
